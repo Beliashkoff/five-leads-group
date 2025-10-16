@@ -1,0 +1,30 @@
+name: Single Commit Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-single-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Count commits in PR
+        id: count
+        run: |
+          COMMIT_COUNT=$(git rev-list --count ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
+          echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+          echo "Найдено коммитов в PR: $COMMIT_COUNT"
+
+      - name: Validate commit count
+        run: |
+          if [ "${{ steps.count.outputs.commit_count }}" -ne 1 ]; then
+            echo "❌ Ошибка: в pull request должно быть ровно 1 коммит."
+            exit 1
+          else
+            echo "✅ PR содержит ровно 1 коммит. Проверка пройдена."
+          fi
