@@ -1,0 +1,38 @@
+name: Commit Message Prefix Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-commit-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get last commit message in PR
+        id: get_commit
+        run: |
+          COMMIT_MESSAGE=$(git log --format=%s -n 1 ${{ github.event.pull_request.head.sha }})
+          echo "commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+          echo "Название коммита: '$COMMIT_MESSAGE'"
+
+      - name: Validate commit message prefix
+        run: |
+          MESSAGE="${{ steps.get_commit.outputs.commit_message }}"
+          if [[ "$MESSAGE" == docs* ]] || \
+             [[ "$MESSAGE" == content* ]] || \
+             [[ "$MESSAGE" == fix* ]] || \
+             [[ "$MESSAGE" == refactor* ]] || \
+             [[ "$MESSAGE" == style* ]] || \
+             [[ "$MESSAGE" == chore* ]]; then
+            echo "✅ Префикс коммита корректен: '$MESSAGE'"
+          else
+            echo "❌ Ошибка: сообщение коммита должно начинаться с одного из:"
+            echo "   docs, content, fix, refactor, style, chore"
+            echo "   Получено: '$MESSAGE'"
+            exit 1
+          fi
