@@ -1,0 +1,73 @@
+name: Branch Name Check
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-branch-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract branch name
+        id: get_branch
+        run: |
+          BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+      - name: Check - branch name is not empty
+        run: |
+          BRANCH="${{ steps.get_branch.outputs.branch_name }}"
+          if [[ -z "$BRANCH" ]]; then
+            echo "❌ Branch name is empty"
+            exit 1
+          fi
+            echo "✅ Branch name isn't empty"
+      - name: Check whether no trailing hyphen
+        run: |
+          BRANCH="${{ steps.get_branch.outputs.branch_name }}"
+          if [[ "$BRANCH" == *"-" ]]; then
+            echo "❌ Branch name must not end with a hyphen"
+            exit 1
+          fi
+            echo "✅ Branch name doesn't end with hyphen"
+      - name: Check - lowercase and hyphens only
+        run: |
+          BRANCH="${{ steps.get_branch.outputs.branch_name }}"
+          if [[ "$BRANCH" =~ ^[a-z0-9/-]+$ ]]; then
+            echo "✅ Only allowed characters used"
+          else
+            echo "❌ Branch contains disallowed characters (uppercase, spaces, special chars)"
+            exit 1
+          fi
+      - name: Check - valid branch format
+        run: |
+          BRANCH="${{ steps.get_branch.outputs.branch_name }}"
+          regex='^(docs|content|general|chore)/(add|update|fix|refactor|remove|workflow)(-[a-z0-9]+(-[a-z0-9]+)*[a-z0-9])?$'
+          if ! [[ "$BRANCH" =~ $regex ]]; then
+            echo "❌ Invalid branch format"
+            echo "Expected: <folder>/<action> OR <folder>/<action>-<description>"
+            echo "Folders: docs, content, general"
+            echo "Actions: add, update, fix, refactor, remove"
+            echo "Description (optional): lowercase, numbers, hyphens, no trailing hyphen"
+            exit 1
+          fi
+          echo "✅ Branch format is correct"
+      - name: Check - total word count (3-6 words)
+        run: |
+          BRANCH="${{ steps.get_branch.outputs.branch_name }}"
+          # Считаем слова во ВСЕЙ ветке (заменяем / и - на пробелы)
+          WORD_COUNT=$(echo "$BRANCH" | tr '/-' ' ' | wc -w)
+          
+          if [[ $WORD_COUNT -lt 2 ]]; then
+            echo "❌ Branch name too short: $WORD_COUNT words (min 3 words)"
+            echo "   Example: docs/add-meeting-guide (4 words)"
+            exit 1
+          fi
+          if [[ $WORD_COUNT -gt 6 ]]; then
+            echo "❌ Branch name too long: $WORD_COUNT words (max 6 words)"
+            exit 1
+          fi
+          echo "✅ Total word count: $WORD_COUNT words"
