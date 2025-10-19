@@ -1,0 +1,64 @@
+name: Markdown Format Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**.md'
+
+jobs:
+  mdformat-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find changed markdown files
+        id: changed-files
+        run: |
+          echo "Ищем измененные .md файлы..."
+          CHANGED_MD_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | grep -E '\.md$' || true)
+          
+          if [ -z "$CHANGED_MD_FILES" ]; then
+            echo "✅ Нет измененных .md файлов в этом PR"
+            echo "changed_md_files=none" >> $GITHUB_OUTPUT
+          else
+            echo "📄 Найдены измененные .md файлы:"
+            echo "$CHANGED_MD_FILES"
+            echo "changed_md_files=$CHANGED_MD_FILES" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        if: steps.changed-files.outputs.changed_md_files != 'none'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install mdformat
+        if: steps.changed-files.outputs.changed_md_files != 'none'
+        run: |
+          echo "Устанавливаем mdformat..."
+          pip install mdformat
+          echo "✅ mdformat успешно установлен!"
+
+      - name: Check markdown formatting
+        if: steps.changed-files.outputs.changed_md_files != 'none'
+        run: |
+          echo "Проверяем форматирование измененных .md файлов..."
+          IFS=$'\n' read -d '' -r -a files <<< "${{ steps.changed-files.outputs.changed_md_files }}" || true
+          
+          if mdformat --check "${files[@]}"; then
+            echo "✅ Проверка пройдена успешно!"
+          else
+            echo "❌ Ошибка: Найдены некорректно отформатированные .md файлы!"
+            exit 1
+          fi
+
+      - name: Success - no markdown changes
+        if: steps.changed-files.outputs.changed_md_files == 'none'
+        run: |
+          echo "------------------------------------------------"
+          echo "✅ Нет измененных .md файлов для проверки"
+          echo "------------------------------------------------"
