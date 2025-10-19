@@ -1,11 +1,11 @@
-name: Commit Message Prefix Check
+name: Commit Message Check
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  check-commit-name:
+  check-commit-message:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -13,26 +13,61 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get last commit message in PR
+      - name: Get last commit message
         id: get_commit
         run: |
           COMMIT_MESSAGE=$(git log --format=%s -n 1 ${{ github.event.pull_request.head.sha }})
           echo "commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
-          echo "Название коммита: '$COMMIT_MESSAGE'"
+          echo "✅ Commit message: '$COMMIT_MESSAGE'"
 
-      - name: Validate commit message prefix
+      - name: Check - message is not empty
         run: |
           MESSAGE="${{ steps.get_commit.outputs.commit_message }}"
-          if [[ "$MESSAGE" == docs* ]] || \
-             [[ "$MESSAGE" == content* ]] || \
-             [[ "$MESSAGE" == fix* ]] || \
-             [[ "$MESSAGE" == refactor* ]] || \
-             [[ "$MESSAGE" == style* ]] || \
-             [[ "$MESSAGE" == chore* ]]; then
-            echo "✅ Префикс коммита корректен: '$MESSAGE'"
-          else
-            echo "❌ Ошибка: сообщение коммита должно начинаться с одного из:"
-            echo "   docs, content, fix, refactor, style, chore"
-            echo "   Получено: '$MESSAGE'"
+          if [[ -z "$MESSAGE" ]]; then
+            echo "❌ Commit message is empty"
             exit 1
           fi
+          echo "✅ Commit message isn't empty"
+
+      - name: Check - max 50 characters
+        run: |
+          MESSAGE="${{ steps.get_commit.outputs.commit_message }}"
+          if [[ ${#MESSAGE} -gt 50 ]]; then
+            echo "❌ Header is too long: ${#MESSAGE} characters (max 50)"
+            exit 1
+          fi
+          echo "✅ Commit message isn't too long"
+
+      - name: Check - no trailing period
+        run: |
+          MESSAGE="${{ steps.get_commit.outputs.commit_message }}"
+          if [[ "$MESSAGE" == *"." ]]; then
+            echo "❌ Header must not end with a period"
+            exit 1
+          fi
+          echo "✅ Commit message doesn't finish with period"
+
+      - name: Check - english only
+        run: |
+          MESSAGE="${{ steps.get_commit.outputs.commit_message }}"
+          if [[ "$MESSAGE" =~ ^[a-z0-9[:space:][:punct:]]+$ ]]; then
+            echo "✅ Only allowed characters used"
+          else
+            echo "Message contains disallowed characters (e.g. Cyrillic, emoji, accented letters)"
+            exit 1
+          fi
+           echo "✅ Commit message doesn't contain disallowed characters"
+
+      - name: Check - valid commit type and format
+        run: |
+          MESSAGE="${{ steps.get_commit.outputs.commit_message }}"
+          regex='^(docs|content|fix|refactor|style|chore)(\([^)]+\))?:[[:space:]].+'
+          if ! [[ "$MESSAGE" =~ $regex ]]; then
+            echo "❌ Invalid format. Expected: <type>(<scope>): <description> or <type>: <description>"
+            exit 1
+          fi
+          echo "✅ Commit message's format is correct"
+
+      - name: All checks passed
+        run: |
+          echo "✅ Commit message is valid!"
