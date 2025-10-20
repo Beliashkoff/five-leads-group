@@ -3,6 +3,8 @@ name: Check Approval Comments
 on:
   pull_request_review:
     types: [submitted, edited, dismissed]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 env:
   REQUIRED_APPROVALS: 1
@@ -51,7 +53,7 @@ jobs:
             
             // Считаем официальные reviews с состоянием APPROVED
             for (const review of reviews.data) {
-              if (review.state === 'APPROVED' && review.user.login !== prAuthor) {
+              if (review.user.login !== prAuthor) {
                 approvers.add(review.user.login);
                 console.log(`✓ Approved by: ${review.user.login}`);
               }
