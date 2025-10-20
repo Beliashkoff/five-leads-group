@@ -13,4 +13,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REVIEW_COMMENT_TEXT: '[КОММЕНТАРИЙ ДЛЯ РЕВЬЮ - СТАВЬ 👍]'
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "${REVIEW_COMMENT_TEXT}"
+          gh pr comment ${{ github.event.pull_request.number }} --body "${REVIEW_COMMENT_TEXT}" --repo "${{ github.repository }}"
