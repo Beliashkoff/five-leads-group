@@ -1,0 +1,80 @@
+name: Commit Body Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-commit-body:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commit body
+        id: get_commit
+        run: |
+          COMMIT_BODY=$(git log --format=%b -n 1 ${{ github.event.pull_request.head.sha }})
+          echo "commit_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "📝 Commit body:"
+          echo "$COMMIT_BODY"
+
+      - name: Check - body line length max 72 characters
+        run: |
+          BODY="${{ steps.get_commit.outputs.commit_body }}"
+          # Проверяем каждую строку тела коммита
+          LINE_NUMBER=0
+          while IFS= read -r line; do
+            LINE_NUMBER=$((LINE_NUMBER + 1))
+            if [[ ${#line} -gt 72 ]]; then
+              echo "❌ Line $LINE_NUMBER in body is too long: ${#line} characters (max 72)"
+              echo "   Content: '$line'"
+              exit 1
+            fi
+          done <<< "$BODY"
+          echo "✅ All lines in commit body are 72 characters or less"
+
+      - name: Check - body in English only
+        run: |
+          BODY="${{ steps.get_commit.outputs.commit_body }}"
+          # Пропускаем проверку если тело пустое
+          if [[ -z "$BODY" ]]; then
+            echo "ℹ️  Commit body is empty, skipping English check"
+            exit 0
+          fi
+          
+          # Проверяем не-пустые строки на английские символы
+          while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+              if [[ "$line" =~ [^a-zA-Z0-9[:space:][:punct:]] ]]; then
+                echo "❌ Body contains non-English characters"
+                echo "   Problematic line: '$line'"
+                exit 1
+              fi
+            fi
+          done <<< "$BODY"
+          echo "✅ Only English characters used in body"
+
+      - name: Check - body separated by empty line from header
+        run: |
+          # Получаем полное сообщение коммита
+          FULL_COMMIT=$(git log --format=%B -n 1 ${{ github.event.pull_request.head.sha }})
+          # Проверяем, что после первой строки (заголовка) идет пустая строка
+          SECOND_LINE=$(echo "$FULL_COMMIT" | sed -n '2p')
+          if [[ -n "$SECOND_LINE" ]]; then
+            echo "❌ Body must be separated from header by an empty line"
+            echo "   Second line should be empty, but got: '$SECOND_LINE'"
+            exit 1
+          fi
+          echo "✅ Body is properly separated from header by empty line"
+
+      - name: All checks passed
+        run: |
+          echo "✅ Commit body follows all rules!"
+          echo "   ✓ Max 72 characters per line"
+          echo "   ✓ English language only"
+          echo "   ✓ Separated by empty line from header"
