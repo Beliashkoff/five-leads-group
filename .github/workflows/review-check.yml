@@ -56,6 +56,9 @@ jobs:
             const passed = count >= REQUIRED;
             const approversList = Array.from(approvers).join(', ') || 'none';
             
+            // Выводим список approvers
+            console.log(`Approvers (${count}/${REQUIRED}): ${approversList}`);
+            
             // Создаём статус
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
