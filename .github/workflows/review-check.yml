@@ -1,0 +1,47 @@
+name: PR Review Check by Reactions
+
+on:
+  reaction:
+    types: [created, deleted]
+
+env:
+  REVIEW_COMMENT_TEXT: '[КОММЕНТАРИЙ ДЛЯ РЕВЬЮ - СТАВЬ 👍]'
+  APPROVE_COUNT: 1
+  BOT_LOGIN: 'github-actions[bot]'
+
+jobs:
+  count_reactions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Найти id auto-комментария для ревью
+        id: find_comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BOT_LOGIN: ${{ env.BOT_LOGIN }}
+          REVIEW_COMMENT_TEXT: ${{ env.REVIEW_COMMENT_TEXT }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REVIEW_COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login=="'"$BOT_LOGIN"'" and .body=="'"$REVIEW_COMMENT_TEXT"'") | .id' | tail -1)
+          echo "REVIEW_COMMENT_ID=$REVIEW_COMMENT_ID" >> $GITHUB_ENV
+
+      - name: Сосчитать лайки под этим комментарием
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVE_COUNT: ${{ env.APPROVE_COUNT }}
+        run: |
+          if [[ -z "$REVIEW_COMMENT_ID" ]]; then
+            echo "❌ Не найден авто-комментарий! Проверьте, что он создан."
+            exit 1
+          fi
+          REACTIONS=$(gh api "/repos/${{ github.repository }}/issues/comments/$REVIEW_COMMENT_ID/reactions" \
+            --jq '.[] | select(.content == "+1") | .id' --paginate)
+          COUNT=$(echo "$REACTIONS" | wc -l)
+          echo "👍 reactions count: $COUNT"
+          if [ "$COUNT" -ge "$APPROVE_COUNT" ]; then
+            echo "🤩 Review completed!"
+            exit 0
+          else
+            echo "🙁 Not enough reactions"
+            exit 1
+          fi
