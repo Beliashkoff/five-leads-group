@@ -14,7 +14,6 @@ env:
 jobs:
   check-approvals:
     runs-on: ubuntu-latest
-    # Убираем условие отсюда - проверим внутри
     
     steps:
       - name: Count Approvals
@@ -30,6 +29,28 @@ jobs:
               const t = text.trim().toLowerCase();
               return t === '👍';
             };
+
+            // Проверяем, что для issue_comment это действительно апрув
+            if (context.eventName === 'issue_comment') {
+              const commentBody = context.payload.comment.body;
+              const isPR = context.payload.issue.pull_request != null;
+              
+              console.log(`💬 Comment event detected`);
+              console.log(`📝 Comment body: "${commentBody}"`);
+              console.log(`🔗 Is PR: ${isPR}`);
+              
+              if (!isPR) {
+                console.log('⏭️ Skipping: not a PR comment');
+                return;
+              }
+              
+              if (!isApproval(commentBody)) {
+                console.log('⏭️ Skipping: comment is not an approval (not 👍)');
+                return;
+              }
+              
+              console.log('✅ This is an approval comment on a PR, proceeding...');
+            }
             
             // Получаем номер PR в зависимости от события
             let prNumber, pr;
