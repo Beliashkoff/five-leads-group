@@ -3,8 +3,6 @@ name: Check Approval Comments
 on:
   pull_request_review:
     types: [submitted, edited, dismissed]
-  pull_request:
-    types: [opened, synchronize]
 
 env:
   REQUIRED_APPROVALS: 1
