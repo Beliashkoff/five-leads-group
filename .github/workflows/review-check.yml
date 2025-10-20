@@ -5,14 +5,16 @@ on:
     types: [created, edited]
   pull_request:
     types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
 
 env:
-  REQUIRED_APPROVALS: ${{ '1' }}
+  REQUIRED_APPROVALS: 1
 
 jobs:
   check-approvals:
     runs-on: ubuntu-latest
-    if: github.event.pull_request != null || github.event.issue.pull_request != null
+    if: github.event_name == 'pull_request' || github.event.issue.pull_request != null
     
     steps:
       - name: Count Approvals
@@ -29,40 +31,61 @@ jobs:
               return t === '👍';
             };
             
-            const prNumber = context.payload.pull_request?.number || 
-                           context.payload.issue?.number;
+            // Получаем номер PR в зависимости от события
+            let prNumber, pr;
             
-            const pr = context.payload.pull_request || 
-                      (await github.rest.pulls.get({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        pull_number: prNumber
-                      })).data;
+            if (context.eventName === 'pull_request' || context.eventName === 'pull_request_review') {
+              prNumber = context.payload.pull_request.number;
+              pr = context.payload.pull_request;
+            } else if (context.eventName === 'issue_comment') {
+              prNumber = context.payload.issue.number;
+              // Получаем данные PR
+              const prData = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              pr = prData.data;
+            }
             
+            console.log(`📝 Checking PR #${prNumber}`);
+            console.log(`👤 PR Author: ${pr.user.login}`);
+            
+            // Получаем все комментарии
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
             });
             
+            console.log(`💬 Total comments: ${comments.data.length}`);
+            
             const approvers = new Set();
             
             for (const comment of comments.data) {
+              console.log(`Comment by ${comment.user.login}: "${comment.body.trim()}"`);
+              
               if (isApproval(comment.body) && 
                   comment.user.login !== pr.user.login) {
                 approvers.add(comment.user.login);
+                console.log(`✅ Approval counted from: ${comment.user.login}`);
               }
             }
             
             const count = approvers.size;
             const passed = count >= REQUIRED;
             
-            // Создаём статус с правильным state
+            console.log(`\n📊 Summary:`);
+            console.log(`Required: ${REQUIRED}`);
+            console.log(`Got: ${count}`);
+            console.log(`Approvers: ${Array.from(approvers).join(', ') || 'none'}`);
+            
+            // Создаём статус
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: pr.head.sha,
-              state: passed ? 'success' : 'failure',  // Изменено с 'pending' на 'failure'
+              state: passed ? 'success' : 'failure',
               context: 'approvals',
               description: `${count}/${REQUIRED} approvals: ${Array.from(approvers).join(', ') || 'none'}`,
             });
@@ -71,6 +94,5 @@ jobs:
               core.setFailed(`Need ${REQUIRED - count} more approval(s)`);
             } else {
               console.log('✅ All checks passed! PR has enough approvals.');
-              console.log(`✅ Got ${count} approvals from: ${Array.from(approvers).join(', ')}`);
               core.info(`✅ Success! PR approved by ${count} reviewers: ${Array.from(approvers).join(', ')}`);
             }
