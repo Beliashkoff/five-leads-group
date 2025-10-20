@@ -1,0 +1,26 @@
+# _config.yml
+title: "FIVE LEADS GROUP"
+description: "Команда по курсу 'Групповая динамика и коммуникации в профессиональной практике программной инженерии'"
+baseurl: "/five-leads-group"
+repository: "your-username/five-leads-group"
+
+# Академическая тема
+remote_theme: pages-themes/cayman@v0.2.0
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+
+# Настройки для НИУ ВШЭ
+university: "Национальный исследовательский университет «Высшая школа экономики»"
+faculty: "Факультет компьютерных наук"
+program: "Программная инженерия"
+year: "2025-2026 учебный год"
+
+# Навигация
+navigation:
+  - title: "Команда"
+    url: "/#команда"
+  - title: "Документация"
+    url: "/docs/contribution"
+  - title: "Артефакты"
+    url: "/content/questionnaire"
