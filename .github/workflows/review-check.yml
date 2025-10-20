@@ -36,12 +36,24 @@ jobs:
               issue_number: prNumber,
             });
             
+            console.log('\n=== PR Reviews ===');
+            reviews.data.forEach(review => {
+              console.log(`- ${review.user.login}: ${review.state} (${review.submitted_at})`);
+            });
+            
+            console.log('\n=== PR Comments ===');
+            comments.data.forEach(comment => {
+              const preview = comment.body.substring(0, 50).replace(/\n/g, ' ');
+              console.log(`- ${comment.user.login}: "${preview}${comment.body.length > 50 ? '...' : ''}"`);
+            });
+            
             const approvers = new Set();
             
             // Считаем официальные reviews с состоянием APPROVED
             for (const review of reviews.data) {
               if (review.state === 'APPROVED' && review.user.login !== prAuthor) {
                 approvers.add(review.user.login);
+                console.log(`✓ Approved by: ${review.user.login}`);
               }
             }
             
@@ -49,6 +61,7 @@ jobs:
             for (const comment of comments.data) {
               if (comment.body.trim() === '👍' && comment.user.login !== prAuthor) {
                 approvers.add(comment.user.login);
+                console.log(`✓ Thumbs up from: ${comment.user.login}`);
               }
             }
             
@@ -57,7 +70,9 @@ jobs:
             const approversList = Array.from(approvers).join(', ') || 'none';
             
             // Выводим список approvers
+            console.log(`\n=== Summary ===`);
             console.log(`Approvers (${count}/${REQUIRED}): ${approversList}`);
+            console.log(`Status: ${passed ? '✓ PASSED' : '✗ FAILED'}`);
             
             // Создаём статус
             await github.rest.repos.createCommitStatus({
