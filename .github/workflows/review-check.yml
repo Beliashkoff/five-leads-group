@@ -5,7 +5,7 @@ on:
     types: [submitted, edited, dismissed]
 
 env:
-  REQUIRED_APPROVALS: 1
+  REQUIRED_APPROVALS: 4
 
 jobs:
   check-approvals:
