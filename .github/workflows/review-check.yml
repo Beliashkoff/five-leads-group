@@ -1,47 +1,66 @@
-name: PR Review Check by Reactions
+name: Check Approval Comments
 
 on:
-  reaction:
-    types: [created, deleted]
-
-env:
-  REVIEW_COMMENT_TEXT: '[КОММЕНТАРИЙ ДЛЯ РЕВЬЮ - СТАВЬ 👍]'
-  APPROVE_COUNT: 1
-  BOT_LOGIN: 'github-actions[bot]'
+  issue_comment:
+    types: [created, edited]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
-  count_reactions:
+  check-approvals:
     runs-on: ubuntu-latest
+    if: github.event.pull_request != null || github.event.issue.pull_request != null
+    
     steps:
-      - name: Найти id auto-комментария для ревью
-        id: find_comment
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BOT_LOGIN: ${{ env.BOT_LOGIN }}
-          REVIEW_COMMENT_TEXT: ${{ env.REVIEW_COMMENT_TEXT }}
-        run: |
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          REVIEW_COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
-            --jq '.[] | select(.user.login=="'"$BOT_LOGIN"'" and .body=="'"$REVIEW_COMMENT_TEXT"'") | .id' | tail -1)
-          echo "REVIEW_COMMENT_ID=$REVIEW_COMMENT_ID" >> $GITHUB_ENV
-
-      - name: Сосчитать лайки под этим комментарием
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPROVE_COUNT: ${{ env.APPROVE_COUNT }}
-        run: |
-          if [[ -z "$REVIEW_COMMENT_ID" ]]; then
-            echo "❌ Не найден авто-комментарий! Проверьте, что он создан."
-            exit 1
-          fi
-          REACTIONS=$(gh api "/repos/${{ github.repository }}/issues/comments/$REVIEW_COMMENT_ID/reactions" \
-            --jq '.[] | select(.content == "+1") | .id' --paginate)
-          COUNT=$(echo "$REACTIONS" | wc -l)
-          echo "👍 reactions count: $COUNT"
-          if [ "$COUNT" -ge "$APPROVE_COUNT" ]; then
-            echo "🤩 Review completed!"
-            exit 0
-          else
-            echo "🙁 Not enough reactions"
-            exit 1
-          fi
+      - name: Count Approvals
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const REQUIRED = 2;
+            
+            // Что считаем за апрув
+            const isApproval = (text) => {
+              const t = text.trim().toLowerCase();
+              return t === '👍';
+            };
+            
+            const prNumber = context.payload.pull_request?.number || 
+                           context.payload.issue?.number;
+            
+            const pr = context.payload.pull_request || 
+                      (await github.rest.pulls.get({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: prNumber
+                      })).data;
+            
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            
+            const approvers = new Set();
+            
+            for (const comment of comments.data) {
+              if (isApproval(comment.body) && 
+                  comment.user.login !== pr.user.login) {
+                approvers.add(comment.user.login);
+              }
+            }
+            
+            const count = approvers.size;
+            const passed = count >= REQUIRED;
+            
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: pr.head.sha,
+              state: passed ? 'success' : 'pending',
+              context: 'approvals',
+              description: `${count}/${REQUIRED} approvals: ${Array.from(approvers).join(', ') || 'none'}`,
+            });
+            
+            if (!passed) {
+              core.setFailed(`Need ${REQUIRED - count} more`);
+            }
