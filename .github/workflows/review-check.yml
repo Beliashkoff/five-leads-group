@@ -5,15 +5,9 @@ on:
     types: [created, edited]
   pull_request:
     types: [opened, synchronize, reopened]
-  workflow_dispatch:
-    inputs:
-      required_approvals:
-        description: 'Number of required approvals'
-        required: false
-        default: '1'
 
 env:
-  REQUIRED_APPROVALS: ${{ github.event.inputs.required_approvals || '1' }}
+  REQUIRED_APPROVALS: ${{ '1' }}
 
 jobs:
   check-approvals:
@@ -63,17 +57,18 @@ jobs:
             const count = approvers.size;
             const passed = count >= REQUIRED;
             
+            // Создаём статус с правильным state
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: pr.head.sha,
-              state: passed ? 'success' : 'pending',
+              state: passed ? 'success' : 'failure',  // Изменено с 'pending' на 'failure'
               context: 'approvals',
               description: `${count}/${REQUIRED} approvals: ${Array.from(approvers).join(', ') || 'none'}`,
             });
             
             if (!passed) {
-              core.setFailed(`Need ${REQUIRED - count} more`);
+              core.setFailed(`Need ${REQUIRED - count} more approval(s)`);
             } else {
               console.log('✅ All checks passed! PR has enough approvals.');
               console.log(`✅ Got ${count} approvals from: ${Array.from(approvers).join(', ')}`);
