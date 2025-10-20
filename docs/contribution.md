@@ -1,3 +1,9 @@
+---
+layout: page
+title: "Contribution Guide"
+description: "Руководство по работе с репозиторием FIVE LEADS GROUP"
+nav_order: 1
+---
 ## Структура репозитория
 ```
 / (five-leads-group)

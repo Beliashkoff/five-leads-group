@@ -1,3 +1,9 @@
+---
+layout: default
+title: "FIVE LEADS GROUP"
+subtitle: "Команда по курсу групповой динамики и коммуникаций"
+---
+
 # FIVE LEADS GROUP
 
 <div align="center">
