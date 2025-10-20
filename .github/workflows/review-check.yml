@@ -1,0 +1,119 @@
+name: Check Approval Comments
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+env:
+  REQUIRED_APPROVALS: 1
+
+jobs:
+  check-approvals:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Count Approvals
+        uses: actions/github-script@v7
+        env:
+          REQUIRED: ${{ env.REQUIRED_APPROVALS }}
+        with:
+          script: |
+            const REQUIRED = parseInt(process.env.REQUIRED);
+            
+            // Что считаем за апрув
+            const isApproval = (text) => {
+              const t = text.trim().toLowerCase();
+              return t === '👍';
+            };
+
+            // Проверяем, что для issue_comment это действительно апрув
+            if (context.eventName === 'issue_comment') {
+              const commentBody = context.payload.comment.body;
+              const isPR = context.payload.issue.pull_request != null;
+              
+              console.log(`💬 Comment event detected`);
+              console.log(`📝 Comment body: "${commentBody}"`);
+              console.log(`🔗 Is PR: ${isPR}`);
+              
+              if (!isPR) {
+                console.log('⏭️ Skipping: not a PR comment');
+                return;
+              }
+              
+              if (!isApproval(commentBody)) {
+                console.log('⏭️ Skipping: comment is not an approval (not 👍)');
+                return;
+              }
+              
+              console.log('✅ This is an approval comment on a PR, proceeding...');
+            }
+            
+            // Получаем номер PR в зависимости от события
+            let prNumber, pr;
+            
+            if (context.eventName === 'pull_request' || context.eventName === 'pull_request_review') {
+              prNumber = context.payload.pull_request.number;
+              pr = context.payload.pull_request;
+            } else if (context.eventName === 'issue_comment') {
+              prNumber = context.payload.issue.number;
+              // Получаем данные PR
+              const prData = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              pr = prData.data;
+            }
+            
+            console.log(`📝 Checking PR #${prNumber}`);
+            console.log(`👤 PR Author: ${pr.user.login}`);
+            
+            // Получаем все комментарии
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            
+            console.log(`💬 Total comments: ${comments.data.length}`);
+            
+            const approvers = new Set();
+            
+            for (const comment of comments.data) {
+              console.log(`Comment by ${comment.user.login}: "${comment.body.trim()}"`);
+              
+              if (isApproval(comment.body) && 
+                  comment.user.login !== pr.user.login) {
+                approvers.add(comment.user.login);
+                console.log(`✅ Approval counted from: ${comment.user.login}`);
+              }
+            }
+            
+            const count = approvers.size;
+            const passed = count >= REQUIRED;
+            
+            console.log(`\n📊 Summary:`);
+            console.log(`Required: ${REQUIRED}`);
+            console.log(`Got: ${count}`);
+            console.log(`Approvers: ${Array.from(approvers).join(', ') || 'none'}`);
+            
+            // Создаём статус
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: pr.head.sha,
+              state: passed ? 'success' : 'failure',
+              context: 'approvals',
+              description: `${count}/${REQUIRED} approvals: ${Array.from(approvers).join(', ') || 'none'}`,
+            });
+            
+            if (!passed) {
+              core.setFailed(`Need ${REQUIRED - count} more approval(s)`);
+            } else {
+              console.log('✅ All checks passed! PR has enough approvals.');
+              core.info(`✅ Success! PR approved by ${count} reviewers: ${Array.from(approvers).join(', ')}`);
+            }
