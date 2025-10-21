@@ -1,0 +1,89 @@
+name: Check Approval Comments
+
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+env:
+  REQUIRED_APPROVALS: 4
+
+jobs:
+  check-approvals:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Count Approvals
+        uses: actions/github-script@v7
+        env:
+          REQUIRED: ${{ env.REQUIRED_APPROVALS }}
+        with:
+          script: |
+            const REQUIRED = parseInt(process.env.REQUIRED);
+            const prNumber = context.payload.pull_request.number;
+            const prAuthor = context.payload.pull_request.user.login;
+            
+            // Получаем все reviews
+            const reviews = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            
+            // Получаем все комментарии
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            
+            console.log('\n=== PR Reviews ===');
+            reviews.data.forEach(review => {
+              console.log(`- ${review.user.login}: ${review.state} (${review.submitted_at})`);
+            });
+            
+            console.log('\n=== PR Comments ===');
+            comments.data.forEach(comment => {
+              const preview = comment.body.substring(0, 50).replace(/\n/g, ' ');
+              console.log(`- ${comment.user.login}: "${preview}${comment.body.length > 50 ? '...' : ''}"`);
+            });
+            
+            const approvers = new Set();
+            
+            // Считаем официальные reviews с состоянием APPROVED
+            for (const review of reviews.data) {
+              if (review.user.login !== prAuthor) {
+                approvers.add(review.user.login);
+                console.log(`✓ Approved by: ${review.user.login}`);
+              }
+            }
+            
+            // Считаем комментарии с 👍
+            for (const comment of comments.data) {
+              if (comment.body.trim() === '👍' && comment.user.login !== prAuthor) {
+                approvers.add(comment.user.login);
+                console.log(`✓ Thumbs up from: ${comment.user.login}`);
+              }
+            }
+            
+            const count = approvers.size;
+            const passed = count >= REQUIRED;
+            const approversList = Array.from(approvers).join(', ') || 'none';
+            
+            // Выводим список approvers
+            console.log(`\n=== Summary ===`);
+            console.log(`Approvers (${count}/${REQUIRED}): ${approversList}`);
+            console.log(`Status: ${passed ? '✓ PASSED' : '✗ FAILED'}`);
+            
+            // Создаём статус
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: passed ? 'success' : 'failure',
+              context: 'approvals',
+              description: `${count}/${REQUIRED} approvals: ${approversList}`,
+            });
+            
+            if (!passed) {
+              core.setFailed(`Need ${REQUIRED - count} more approval(s)`);
+            }
